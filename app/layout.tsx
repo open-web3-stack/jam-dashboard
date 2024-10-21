@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ModeToggle } from "@/components/mode-toggle";
+import { Toaster } from "@/components/ui/sonner";
+import Link from "next/link";
+import Image from "next/image";
+import "./globals.css";
+import { DynamicBreadcrumb } from "@/components/dynamic-breadcrumb";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -35,7 +40,45 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <div className="container flex h-14 items-center">
+              <Link href="/" className="flex items-center space-x-2">
+                <span className="font-bold">JAM Dashboard</span>
+              </Link>
+              <div className="flex flex-1 items-center justify-end space-x-4">
+                <nav className="flex items-center space-x-2">
+                  <ModeToggle />
+                </nav>
+              </div>
+            </div>
+          </header>
+
+          <div className="container py-4">
+            <DynamicBreadcrumb />
+          </div>
+
+          <main>{children}</main>
+
+          <Toaster />
+
+          <footer className="border-t">
+            <div className="container flex items-center justify-center h-14">
+              <a
+                className="flex items-center gap-2 hover:underline hover:underline-offset-4"
+                href="https://github.com/open-web3-stack/jam-dashboard"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Image
+                  src="https://nextjs.org/icons/globe.svg"
+                  alt="Globe icon"
+                  width={16}
+                  height={16}
+                />
+                Go to source code →
+              </a>
+            </div>
+          </footer>
         </ThemeProvider>
       </body>
     </html>
