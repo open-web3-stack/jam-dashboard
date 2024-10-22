@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,8 +18,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Hash, Cpu, Blocks, Users, X } from "lucide-react";
-import { subscribeToNode, unsubscribeFromNode } from "@/lib/ws";
+import { connectToNode, sendRequest, disconnectFromNode } from "@/lib/ws";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 type NodeInfo = {
   endpoint: string;
@@ -34,6 +35,7 @@ const STORAGE_KEY = "telemetry-endpoints";
 export default function TelemetryDashboard() {
   const [rpcInput, setRpcInput] = useState("");
   const [nodeInfo, setNodeInfo] = useState<NodeInfo[]>([]);
+  const router = useRouter();
 
   useEffect(() => {
     const loadSavedEndpoints = () => {
@@ -41,7 +43,7 @@ export default function TelemetryDashboard() {
       if (savedEndpoints) {
         const endpoints = JSON.parse(savedEndpoints);
         endpoints.forEach((endpoint: string) => {
-          subscribeToNode(endpoint, (data) => updateNodeInfo(endpoint, data));
+          connectAndSubscribe(endpoint);
         });
       }
     };
@@ -49,40 +51,65 @@ export default function TelemetryDashboard() {
     loadSavedEndpoints();
 
     return () => {
-      nodeInfo.forEach((node) => unsubscribeFromNode(node.endpoint));
+      nodeInfo.forEach((node) => disconnectFromNode(node.endpoint));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const updateNodeInfo = (
-    endpoint: string,
-    data: Omit<NodeInfo, "endpoint">
-  ) => {
-    setNodeInfo((prev) => {
-      const index = prev.findIndex((node) => node.endpoint === endpoint);
-      if (index !== -1) {
-        const newNodeInfo = [...prev];
-        newNodeInfo[index] = { endpoint, ...data };
-        return newNodeInfo;
-      } else {
-        return [...prev, { endpoint, ...data }];
+  const updateNodeInfo = useCallback(async (endpoint: string) => {
+    try {
+      const data = await sendRequest(endpoint, "telemetry_getUpdate");
+      setNodeInfo((prev) => {
+        const index = prev.findIndex((node) => node.endpoint === endpoint);
+        if (index !== -1) {
+          const newNodeInfo = [...prev];
+          newNodeInfo[index] = { endpoint, ...(data as Partial<NodeInfo>) };
+          return newNodeInfo;
+        } else {
+          return [...prev, { endpoint, ...(data as Partial<NodeInfo>) }];
+        }
+      });
+    } catch (error: unknown) {
+      toast.error(
+        `Failed to update info for ${endpoint}: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    }
+  }, []);
+
+  // TODO: use real ws subscription if available
+  const connectAndSubscribe = useCallback(
+    async (endpoint: string) => {
+      try {
+        await connectToNode(endpoint);
+        updateNodeInfo(endpoint);
+        const interval = setInterval(() => updateNodeInfo(endpoint), 3000);
+        return () => clearInterval(interval);
+      } catch (error: unknown) {
+        toast.error(
+          `Failed to connect to ${endpoint}: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
+        );
       }
-    });
-  };
+    },
+    [updateNodeInfo]
+  );
 
   const validateUrl = (url: string) => {
     const pattern = /^(wss?:\/\/).+$/;
     return pattern.test(url);
   };
 
-  const addRpc = () => {
+  const addRpc = useCallback(() => {
     if (!validateUrl(rpcInput)) {
-      toast("Invalid WebSocket URL");
+      toast.error("Invalid WebSocket URL");
       return;
     }
 
     if (rpcInput && !nodeInfo.some((node) => node.endpoint === rpcInput)) {
-      subscribeToNode(rpcInput, (data) => updateNodeInfo(rpcInput, data));
+      connectAndSubscribe(rpcInput);
       setRpcInput("");
 
       // Save to localStorage
@@ -92,10 +119,10 @@ export default function TelemetryDashboard() {
       savedEndpoints.push(rpcInput);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(savedEndpoints));
     }
-  };
+  }, [rpcInput, nodeInfo, connectAndSubscribe]);
 
-  const removeRpc = (endpoint: string) => {
-    unsubscribeFromNode(endpoint);
+  const removeRpc = useCallback((endpoint: string) => {
+    disconnectFromNode(endpoint);
     setNodeInfo((prev) => prev.filter((node) => node.endpoint !== endpoint));
 
     // Remove from localStorage
@@ -106,7 +133,14 @@ export default function TelemetryDashboard() {
       (savedEndpoint: string) => savedEndpoint !== endpoint
     );
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedEndpoints));
-  };
+  }, []);
+
+  const handleRowClick = useCallback(
+    (endpoint: string) => {
+      router.push(`/node?endpoint=${encodeURIComponent(endpoint)}`);
+    },
+    [router]
+  );
 
   return (
     <div className="w-full h-full flex flex-col gap-4">
@@ -117,7 +151,7 @@ export default function TelemetryDashboard() {
           placeholder="Enter telemetry RPC endpoint"
           value={rpcInput}
           onChange={(e) => setRpcInput(e.target.value)}
-          onKeyPress={(e) => e.key === "Enter" && addRpc()}
+          onKeyDown={(e) => e.key === "Enter" && addRpc()}
           className="flex-grow"
         />
         <Button onClick={addRpc}>Add RPC</Button>
@@ -126,71 +160,26 @@ export default function TelemetryDashboard() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TooltipProvider>
-                <Tooltip delayDuration={50}>
-                  <TooltipTrigger asChild>
-                    <TableHead className="w-[150px] truncate">
-                      <Cpu className="inline-block mr-2 h-4 w-4" />
-                      <span>Node</span>
-                    </TableHead>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Node</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip delayDuration={50}>
-                  <TooltipTrigger asChild>
-                    <TableHead className="w-[200px] truncate">
-                      <Hash className="inline-block mr-2 h-4 w-4" />
-                      <span>Endpoint</span>
-                    </TableHead>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Endpoint</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip delayDuration={50}>
-                  <TooltipTrigger asChild>
-                    <TableHead className="w-[100px] truncate">
-                      <Users className="inline-block mr-2 h-4 w-4" />
-                      <span>Peers</span>
-                    </TableHead>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Peer Count</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip delayDuration={50}>
-                  <TooltipTrigger asChild>
-                    <TableHead className="w-[150px] truncate">
-                      <Blocks className="inline-block mr-2 h-4 w-4" />
-                      <span>Chain Head</span>
-                    </TableHead>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Chain Head</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip delayDuration={50}>
-                  <TooltipTrigger asChild>
-                    <TableHead className="w-[200px] truncate">
-                      <Hash className="inline-block mr-2 h-4 w-4" />
-                      <span>Block Hash</span>
-                    </TableHead>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Block Hash</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <TableHead className="w-[120px]">
+                <Cpu className="inline-block mr-2 h-4 w-4" />
+                <span>Node</span>
+              </TableHead>
+              <TableHead className="w-[200px]">
+                <Hash className="inline-block mr-2 h-4 w-4" />
+                <span>Endpoint</span>
+              </TableHead>
+              <TableHead className="w-[100px]">
+                <Users className="inline-block mr-2 h-4 w-4" />
+                <span>Peers</span>
+              </TableHead>
+              <TableHead className="w-[150px]">
+                <Blocks className="inline-block mr-2 h-4 w-4" />
+                <span>Chain Head</span>
+              </TableHead>
+              <TableHead className="w-[200px]">
+                <Hash className="inline-block mr-2 h-4 w-4" />
+                <span>Block Hash</span>
+              </TableHead>
               <TableHead className="w-[80px]">Action</TableHead>
             </TableRow>
           </TableHeader>
@@ -203,19 +192,14 @@ export default function TelemetryDashboard() {
               </TableRow>
             ) : (
               nodeInfo.map((node, index) => (
-                <TableRow key={index}>
-                  <TooltipProvider>
-                    <Tooltip delayDuration={50}>
-                      <TooltipTrigger asChild>
-                        <TableCell className="font-medium truncate max-w-[150px]">
-                          {node.name || "-"}
-                        </TableCell>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{node.name || "-"}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                <TableRow
+                  key={index}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleRowClick(node.endpoint)}
+                >
+                  <TableCell className="font-medium truncate max-w-[150px]">
+                    {node.name || "-"}
+                  </TableCell>
                   <TooltipProvider>
                     <Tooltip delayDuration={50}>
                       <TooltipTrigger asChild>
@@ -223,35 +207,17 @@ export default function TelemetryDashboard() {
                           {node.endpoint}
                         </TableCell>
                       </TooltipTrigger>
-                      <TooltipContent>
+                      <TooltipContent align="start" side="top">
                         <p>{node.endpoint}</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <TooltipProvider>
-                    <Tooltip delayDuration={50}>
-                      <TooltipTrigger asChild>
-                        <TableCell className="truncate max-w-[100px]">
-                          {node.peerCount ?? "-"}
-                        </TableCell>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{node.peerCount ?? "-"}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <TooltipProvider>
-                    <Tooltip delayDuration={50}>
-                      <TooltipTrigger asChild>
-                        <TableCell className="truncate max-w-[150px]">
-                          {node.chainHead ?? "-"}
-                        </TableCell>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{node.chainHead ?? "-"}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <TableCell className="truncate max-w-[100px]">
+                    {node.peerCount ?? "-"}
+                  </TableCell>
+                  <TableCell className="truncate max-w-[150px]">
+                    {node.chainHead ?? "-"}
+                  </TableCell>
                   <TooltipProvider>
                     <Tooltip delayDuration={50}>
                       <TooltipTrigger asChild>
@@ -259,12 +225,12 @@ export default function TelemetryDashboard() {
                           {node.blockHash || "-"}
                         </TableCell>
                       </TooltipTrigger>
-                      <TooltipContent>
+                      <TooltipContent align="start" side="top">
                         <p>{node.blockHash || "-"}</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <Button
                       variant="ghost"
                       size="sm"
