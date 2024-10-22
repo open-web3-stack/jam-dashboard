@@ -1,12 +1,14 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import Link from "next/link";
+import Image from "next/image";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Toaster } from "@/components/ui/sonner";
-import Link from "next/link";
-import Image from "next/image";
-import "./globals.css";
 import { DynamicBreadcrumb } from "@/components/dynamic-breadcrumb";
+import { Loader } from "lucide-react";
+import "./globals.css";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -57,9 +59,19 @@ export default function RootLayout({
             <DynamicBreadcrumb />
           </div>
 
-          <main>{children}</main>
+          <main>
+            <Suspense
+              fallback={
+                <div className="flex justify-center items-center h-64">
+                  <Loader className="w-12 h-12 animate-spin text-gray-600" />
+                </div>
+              }
+            >
+              {children}
+            </Suspense>
+          </main>
 
-          <Toaster />
+          <Toaster richColors />
 
           <footer className="border-t">
             <div className="container flex items-center justify-center h-14">
