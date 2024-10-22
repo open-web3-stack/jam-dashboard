@@ -18,25 +18,21 @@ const routeLabels: { [key: string]: string } = {
   // Add more mappings as needed
 };
 
-const basePath = "/jam-dashboard";
-
 export function DynamicBreadcrumb() {
   const pathname = usePathname();
-  const pathSegments = pathname
-    .replace(basePath, "")
-    .split("/")
-    .filter((segment) => segment !== "");
+  const pathSegments = pathname.split("/").filter((segment) => segment !== "");
 
   return (
     <Breadcrumb>
       <BreadcrumbList>
         <BreadcrumbItem>
-          <BreadcrumbLink href={basePath}>Home</BreadcrumbLink>
+          <BreadcrumbLink asChild>
+            <Link href={"/"}>Home</Link>
+          </BreadcrumbLink>
         </BreadcrumbItem>
         {pathSegments.map((segment, index) => {
-          const href = `${basePath}/${pathSegments
-            .slice(0, index + 1)
-            .join("/")}`;
+          console.log(segment);
+          const href = `/${pathSegments.slice(0, index + 1).join("/")}`;
           const isLast = index === pathSegments.length - 1;
           const label = routeLabels[segment] || segment;
 
@@ -46,8 +42,8 @@ export function DynamicBreadcrumb() {
               {isLast ? (
                 <BreadcrumbPage>{_.upperFirst(label)}</BreadcrumbPage>
               ) : (
-                <BreadcrumbLink asChild href={href}>
-                  <Link href="/">{label}</Link>
+                <BreadcrumbLink asChild>
+                  <Link href={href}>{label}</Link>
                 </BreadcrumbLink>
               )}
             </BreadcrumbItem>
