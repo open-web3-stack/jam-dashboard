@@ -78,12 +78,13 @@ export default function TelemetryDashboard() {
     }
   }, []);
 
+  // TODO: use real ws subscription if available
   const connectAndSubscribe = useCallback(
     async (endpoint: string) => {
       try {
         await connectToNode(endpoint);
         updateNodeInfo(endpoint);
-        const interval = setInterval(() => updateNodeInfo(endpoint), 5000);
+        const interval = setInterval(() => updateNodeInfo(endpoint), 3000);
         return () => clearInterval(interval);
       } catch (error: unknown) {
         toast.error(

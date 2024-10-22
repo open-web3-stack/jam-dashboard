@@ -24,6 +24,15 @@ type WebSocketResponse = {
   id: number;
 };
 
+type WebSocketSubscriptionResponse = {
+  jsonrpc: string;
+  method: string;
+  params: {
+    result: JSONValue;
+    subscription: string; // id
+  };
+};
+
 type Connection = {
   ws: WebSocket;
   pendingRequests: Map<
@@ -33,6 +42,7 @@ type Connection = {
       reject: (reason: unknown) => void;
     }
   >;
+  subscriptionCallbacks: Map<string, (result: JSONValue) => void>;
 };
 
 const connections: Map<string, Connection> = new Map();
@@ -50,26 +60,39 @@ export function connectToNode(url: string): Promise<void> {
 
     ws.onopen = () => {
       console.log(`Connected to ${url}`);
-      connections.set(url, { ws, pendingRequests: new Map() });
+      connections.set(url, {
+        ws,
+        pendingRequests: new Map(),
+        subscriptionCallbacks: new Map(),
+      });
       resolve();
     };
 
     ws.onmessage = (event) => {
-      const data: WebSocketResponse = JSON.parse(event.data);
+      const data: WebSocketResponse | WebSocketSubscriptionResponse =
+        JSON.parse(event.data);
       const connection = connections.get(url);
       if (connection) {
-        const request = connection.pendingRequests.get(data.id);
-        if (request) {
-          if (data.error) {
-            request.reject(new Error(data.error.message));
-          } else {
-            request.resolve(data.result);
+        if ("id" in data && data.id != null) {
+          const request = connection.pendingRequests.get(data.id);
+          if (request) {
+            if (data.error) {
+              request.reject(new Error(data.error.message));
+            } else {
+              request.resolve(data.result);
+            }
+            connection.pendingRequests.delete(data.id);
           }
-          connection.pendingRequests.delete(data.id);
+        } else if ("method" in data && "params" in data) {
+          // if subscription updates
+          const { result, subscription } = data.params;
+          const callback = connection.subscriptionCallbacks.get(subscription);
+          if (callback) {
+            callback(result);
+          }
         }
       }
     };
-
     ws.onerror = (error) => {
       console.error(`WebSocket error for ${url}:`, error);
       reject(error);
@@ -80,6 +103,14 @@ export function connectToNode(url: string): Promise<void> {
       connections.delete(url);
     };
   });
+}
+
+export function disconnectFromNode(url: string) {
+  const connection = connections.get(url);
+  if (connection) {
+    connection.ws.close();
+    connections.delete(url);
+  }
 }
 
 export function sendRequest(
@@ -107,10 +138,30 @@ export function sendRequest(
   });
 }
 
-export function disconnectFromNode(url: string) {
-  const connection = connections.get(url);
-  if (connection) {
-    connection.ws.close();
-    connections.delete(url);
-  }
+export function subscribe(
+  url: string,
+  method: string,
+  params: Record<string, JSONValue> = {},
+  callback: (result: JSONValue) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const connection = connections.get(url);
+    if (!connection) {
+      reject(new Error(`No active connection to ${url}`));
+      return;
+    }
+
+    const id = nextRequestId++;
+    const message: WebSocketMessage = {
+      jsonrpc: "2.0",
+      method,
+      id,
+      params,
+    };
+
+    connection.subscriptionCallbacks.set(id.toString(), callback);
+    connection.ws.send(JSON.stringify(message));
+
+    resolve();
+  });
 }
