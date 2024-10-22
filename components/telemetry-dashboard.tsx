@@ -126,71 +126,26 @@ export default function TelemetryDashboard() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TooltipProvider>
-                <Tooltip delayDuration={50}>
-                  <TooltipTrigger asChild>
-                    <TableHead className="w-[150px] truncate">
-                      <Cpu className="inline-block mr-2 h-4 w-4" />
-                      <span>Node</span>
-                    </TableHead>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Node</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip delayDuration={50}>
-                  <TooltipTrigger asChild>
-                    <TableHead className="w-[200px] truncate">
-                      <Hash className="inline-block mr-2 h-4 w-4" />
-                      <span>Endpoint</span>
-                    </TableHead>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Endpoint</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip delayDuration={50}>
-                  <TooltipTrigger asChild>
-                    <TableHead className="w-[100px] truncate">
-                      <Users className="inline-block mr-2 h-4 w-4" />
-                      <span>Peers</span>
-                    </TableHead>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Peer Count</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip delayDuration={50}>
-                  <TooltipTrigger asChild>
-                    <TableHead className="w-[150px] truncate">
-                      <Blocks className="inline-block mr-2 h-4 w-4" />
-                      <span>Chain Head</span>
-                    </TableHead>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Chain Head</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip delayDuration={50}>
-                  <TooltipTrigger asChild>
-                    <TableHead className="w-[200px] truncate">
-                      <Hash className="inline-block mr-2 h-4 w-4" />
-                      <span>Block Hash</span>
-                    </TableHead>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Block Hash</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <TableHead className="w-[150px]">
+                <Cpu className="inline-block mr-2 h-4 w-4" />
+                <span>Node</span>
+              </TableHead>
+              <TableHead className="w-[200px]">
+                <Hash className="inline-block mr-2 h-4 w-4" />
+                <span>Endpoint</span>
+              </TableHead>
+              <TableHead className="w-[100px]">
+                <Users className="inline-block mr-2 h-4 w-4" />
+                <span>Peers</span>
+              </TableHead>
+              <TableHead className="w-[150px]">
+                <Blocks className="inline-block mr-2 h-4 w-4" />
+                <span>Chain Head</span>
+              </TableHead>
+              <TableHead className="w-[200px]">
+                <Hash className="inline-block mr-2 h-4 w-4" />
+                <span>Block Hash</span>
+              </TableHead>
               <TableHead className="w-[80px]">Action</TableHead>
             </TableRow>
           </TableHeader>
@@ -203,19 +158,10 @@ export default function TelemetryDashboard() {
               </TableRow>
             ) : (
               nodeInfo.map((node, index) => (
-                <TableRow key={index}>
-                  <TooltipProvider>
-                    <Tooltip delayDuration={50}>
-                      <TooltipTrigger asChild>
-                        <TableCell className="font-medium truncate max-w-[150px]">
-                          {node.name || "-"}
-                        </TableCell>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{node.name || "-"}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                <TableRow key={index} className="cursor-pointer">
+                  <TableCell className="font-medium truncate max-w-[150px]">
+                    {node.name || "-"}
+                  </TableCell>
                   <TooltipProvider>
                     <Tooltip delayDuration={50}>
                       <TooltipTrigger asChild>
@@ -223,35 +169,17 @@ export default function TelemetryDashboard() {
                           {node.endpoint}
                         </TableCell>
                       </TooltipTrigger>
-                      <TooltipContent>
+                      <TooltipContent align="start" side="top">
                         <p>{node.endpoint}</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <TooltipProvider>
-                    <Tooltip delayDuration={50}>
-                      <TooltipTrigger asChild>
-                        <TableCell className="truncate max-w-[100px]">
-                          {node.peerCount ?? "-"}
-                        </TableCell>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{node.peerCount ?? "-"}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <TooltipProvider>
-                    <Tooltip delayDuration={50}>
-                      <TooltipTrigger asChild>
-                        <TableCell className="truncate max-w-[150px]">
-                          {node.chainHead ?? "-"}
-                        </TableCell>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{node.chainHead ?? "-"}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <TableCell className="truncate max-w-[100px]">
+                    {node.peerCount ?? "-"}
+                  </TableCell>
+                  <TableCell className="truncate max-w-[150px]">
+                    {node.chainHead ?? "-"}
+                  </TableCell>
                   <TooltipProvider>
                     <Tooltip delayDuration={50}>
                       <TooltipTrigger asChild>
@@ -259,7 +187,7 @@ export default function TelemetryDashboard() {
                           {node.blockHash || "-"}
                         </TableCell>
                       </TooltipTrigger>
-                      <TooltipContent>
+                      <TooltipContent align="start" side="top">
                         <p>{node.blockHash || "-"}</p>
                       </TooltipContent>
                     </Tooltip>

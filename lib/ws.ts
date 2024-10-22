@@ -7,8 +7,7 @@ type NodeInfo = {
 
 type Subscription = {
   url: string;
-  // TODO: to be changed to ws
-  interval: NodeJS.Timeout;
+  ws: WebSocket;
   callback: (data: NodeInfo) => void;
 };
 
@@ -23,53 +22,63 @@ export function subscribeToNode(
     return;
   }
 
-  // TODO: In a real implementation, you would create a WebSocket connection here
-  // For now, we'll use a mock implementation
-  const mockWebSocket = {
-    send: (message: string) => {
-      console.log(`Sending message to ${url}:`, message);
-      // Simulate receiving data
-      setTimeout(() => {
-        const mockData: NodeInfo = {
-          name: `Node ${Math.floor(Math.random() * 1000)}`,
-          chainHead: Math.floor(Math.random() * 1000000),
-          blockHash: `0x${Array.from({ length: 64 }, () =>
-            Math.floor(Math.random() * 16).toString(16)
-          ).join("")}`,
-          peerCount: Math.floor(Math.random() * 100),
-        };
-        callback(mockData);
-      }, 1000);
-    },
-    close: () => {
-      console.log(`Closing connection to ${url}`);
-    },
+  const ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    console.log(`Connected to ${url}`);
+    sendUpdate(ws);
   };
 
-  // Simulate periodic updates
-  mockWebSocket.send("getUpdate");
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.jsonrpc === "2.0" && data.result) {
+      const nodeInfo: NodeInfo = {
+        name: data.result.name,
+        peerCount: parseInt(data.result.peerCount, 10),
+        chainHead: parseInt(data.result.chainHead, 10),
+        blockHash: data.result.blockHash,
+      };
+      callback(nodeInfo);
+    }
+  };
+
+  ws.onerror = (error) => {
+    console.error(`WebSocket error for ${url}:`, error);
+  };
+
+  ws.onclose = () => {
+    console.log(`Connection closed for ${url}`);
+    subscriptions.delete(url);
+  };
+
+  subscriptions.set(url, { url, ws, callback });
+
+  // Set up periodic updates
   const interval = setInterval(() => {
-    mockWebSocket.send("getUpdate");
+    if (ws.readyState === WebSocket.OPEN) {
+      sendUpdate(ws);
+    }
   }, 5000);
 
-  subscriptions.set(url, { url, callback, interval });
+  return { ws, interval };
+}
 
-  // In a real implementation, you would return the actual WebSocket object
-  return { mockWebSocket, interval };
+function sendUpdate(ws: WebSocket) {
+  const message = {
+    jsonrpc: "2.0",
+    method: "telemetry_getUpdate",
+    id: 1,
+    params: {},
+  };
+  ws.send(JSON.stringify(message));
 }
 
 export function unsubscribeFromNode(url: string) {
   const subscription = subscriptions.get(url);
   if (subscription) {
-    // Close the WebSocket connection
-    // if (subscription.ws && subscription.ws.readyState === WebSocket.OPEN) {
-    //   subscription.ws.close();
-    // }
-    // TODO: Use real connection
-    if (subscription.interval) {
-      clearInterval(subscription.interval);
+    if (subscription.ws.readyState === WebSocket.OPEN) {
+      subscription.ws.close();
     }
-    // Remove from subscriptions map
     subscriptions.delete(url);
   }
 }
