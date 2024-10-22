@@ -31,7 +31,6 @@ export function DynamicBreadcrumb() {
           </BreadcrumbLink>
         </BreadcrumbItem>
         {pathSegments.map((segment, index) => {
-          console.log(segment);
           const href = `/${pathSegments.slice(0, index + 1).join("/")}`;
           const isLast = index === pathSegments.length - 1;
           const label = routeLabels[segment] || segment;

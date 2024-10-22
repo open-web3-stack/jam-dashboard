@@ -95,7 +95,7 @@ export function connectToNode(url: string): Promise<void> {
     };
     ws.onerror = (error) => {
       console.error(`WebSocket error for ${url}:`, error);
-      reject(error);
+      reject(new Error(`WebSocket error`));
     };
 
     ws.onclose = () => {

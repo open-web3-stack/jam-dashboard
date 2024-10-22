@@ -28,6 +28,7 @@ type NodeInfo = {
   chainHead?: number | null;
   blockHash?: string | null;
   peerCount?: number | null;
+  connected: boolean;
 };
 
 const STORAGE_KEY = "telemetry-endpoints";
@@ -41,8 +42,15 @@ export default function TelemetryDashboard() {
     const loadSavedEndpoints = () => {
       const savedEndpoints = localStorage.getItem(STORAGE_KEY);
       if (savedEndpoints) {
-        const endpoints = JSON.parse(savedEndpoints);
-        endpoints.forEach((endpoint: string) => {
+        const endpoints: string[] = JSON.parse(savedEndpoints);
+        setNodeInfo(
+          endpoints.map((endpoint) => ({
+            endpoint,
+            connected: false,
+          }))
+        );
+
+        endpoints.forEach((endpoint) => {
           connectAndSubscribe(endpoint);
         });
       }
@@ -53,7 +61,6 @@ export default function TelemetryDashboard() {
     return () => {
       nodeInfo.forEach((node) => disconnectFromNode(node.endpoint));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const updateNodeInfo = useCallback(async (endpoint: string) => {
@@ -63,10 +70,18 @@ export default function TelemetryDashboard() {
         const index = prev.findIndex((node) => node.endpoint === endpoint);
         if (index !== -1) {
           const newNodeInfo = [...prev];
-          newNodeInfo[index] = { endpoint, ...(data as Partial<NodeInfo>) };
+          newNodeInfo[index] = {
+            ...newNodeInfo[index],
+            endpoint,
+            ...(data as Partial<NodeInfo>),
+            connected: true,
+          };
           return newNodeInfo;
         } else {
-          return [...prev, { endpoint, ...(data as Partial<NodeInfo>) }];
+          return [
+            ...prev,
+            { endpoint, ...(data as Partial<NodeInfo>), connected: true },
+          ];
         }
       });
     } catch (error: unknown) {
@@ -78,14 +93,16 @@ export default function TelemetryDashboard() {
     }
   }, []);
 
-  // TODO: use real ws subscription if available
   const connectAndSubscribe = useCallback(
     async (endpoint: string) => {
       try {
         await connectToNode(endpoint);
         updateNodeInfo(endpoint);
-        const interval = setInterval(() => updateNodeInfo(endpoint), 3000);
-        return () => clearInterval(interval);
+        setNodeInfo((prev) =>
+          prev.map((node) =>
+            node.endpoint === endpoint ? { ...node, connected: true } : node
+          )
+        );
       } catch (error: unknown) {
         toast.error(
           `Failed to connect to ${endpoint}: ${
@@ -109,10 +126,13 @@ export default function TelemetryDashboard() {
     }
 
     if (rpcInput && !nodeInfo.some((node) => node.endpoint === rpcInput)) {
+      setNodeInfo((prev) => [
+        ...prev,
+        { endpoint: rpcInput, connected: false },
+      ]); // Add as disconnected
       connectAndSubscribe(rpcInput);
       setRpcInput("");
 
-      // Save to localStorage
       const savedEndpoints = JSON.parse(
         localStorage.getItem(STORAGE_KEY) || "[]"
       );
@@ -125,7 +145,6 @@ export default function TelemetryDashboard() {
     disconnectFromNode(endpoint);
     setNodeInfo((prev) => prev.filter((node) => node.endpoint !== endpoint));
 
-    // Remove from localStorage
     const savedEndpoints = JSON.parse(
       localStorage.getItem(STORAGE_KEY) || "[]"
     );
@@ -194,7 +213,11 @@ export default function TelemetryDashboard() {
               nodeInfo.map((node, index) => (
                 <TableRow
                   key={index}
-                  className="cursor-pointer hover:bg-muted/50"
+                  className={`cursor-pointer hover:bg-muted/50 ${
+                    node.connected
+                      ? ""
+                      : "bg-red-100 dark:bg-red-500 text-black dark:text-white"
+                  }`}
                   onClick={() => handleRowClick(node.endpoint)}
                 >
                   <TableCell className="font-medium truncate max-w-[150px]">
