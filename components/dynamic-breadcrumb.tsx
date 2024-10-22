@@ -9,6 +9,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import Link from "next/link";
+import _ from "lodash";
 
 const routeLabels: { [key: string]: string } = {
   dashboard: "Dashboard",
@@ -42,9 +44,11 @@ export function DynamicBreadcrumb() {
             <BreadcrumbItem key={href}>
               <BreadcrumbSeparator>/</BreadcrumbSeparator>
               {isLast ? (
-                <BreadcrumbPage>{label}</BreadcrumbPage>
+                <BreadcrumbPage>{_.upperFirst(label)}</BreadcrumbPage>
               ) : (
-                <BreadcrumbLink href={href}>{label}</BreadcrumbLink>
+                <BreadcrumbLink asChild href={href}>
+                  <Link href="/">{label}</Link>
+                </BreadcrumbLink>
               )}
             </BreadcrumbItem>
           );
