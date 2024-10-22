@@ -16,7 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install
-        run: pnpm install --frozen-lockfile
+        run: |
+          corepack install
+          pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm lint
       - name: Build packages
