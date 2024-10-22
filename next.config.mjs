@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    output: "export",
+  basePath: "/jam-dashboard",
+  output: "export",
 };
 
 export default nextConfig;
