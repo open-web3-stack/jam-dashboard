@@ -10,6 +10,12 @@ permissions:
   pages: write # to deploy to Pages
   id-token: write # to verify the deployment originates from an appropriate source
 
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   setup:
     runs-on: ubuntu-latest
@@ -26,6 +32,8 @@ jobs:
           pnpm build
       - name: Setup Pages
         uses: actions/configure-pages@v5
+        with:
+          static_site_generator: next
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
