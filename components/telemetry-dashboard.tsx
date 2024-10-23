@@ -275,9 +275,9 @@ export default function TelemetryDashboard() {
                   }`}
                   onClick={() =>
                     window.open(
-                      `jam-dashboard/node/?endpoint=${encodeURIComponent(
-                        node.endpoint
-                      )}`,
+                      `${
+                        window.location.pathname
+                      }/node/?endpoint=${encodeURIComponent(node.endpoint)}`,
                       "_blank"
                     )
                   }
