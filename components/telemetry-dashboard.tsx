@@ -20,7 +20,7 @@ import {
 import { Hash, Cpu, Blocks, Users, X } from "lucide-react";
 import { connectToNode, sendRequest, disconnectFromNode } from "@/lib/ws";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type NodeInfo = {
   endpoint: string;
@@ -36,32 +36,6 @@ const STORAGE_KEY = "telemetry-endpoints";
 export default function TelemetryDashboard() {
   const [rpcInput, setRpcInput] = useState("");
   const [nodeInfo, setNodeInfo] = useState<NodeInfo[]>([]);
-  const router = useRouter();
-
-  useEffect(() => {
-    const loadSavedEndpoints = () => {
-      const savedEndpoints = localStorage.getItem(STORAGE_KEY);
-      if (savedEndpoints) {
-        const endpoints: string[] = JSON.parse(savedEndpoints);
-        setNodeInfo(
-          endpoints.map((endpoint) => ({
-            endpoint,
-            connected: false,
-          }))
-        );
-
-        endpoints.forEach((endpoint) => {
-          connectAndSubscribe(endpoint);
-        });
-      }
-    };
-
-    loadSavedEndpoints();
-
-    return () => {
-      nodeInfo.forEach((node) => disconnectFromNode(node.endpoint));
-    };
-  }, []);
 
   const updateNodeInfo = useCallback(async (endpoint: string) => {
     try {
@@ -93,16 +67,13 @@ export default function TelemetryDashboard() {
     }
   }, []);
 
+  // TODO: use real subscription if available
   const connectAndSubscribe = useCallback(
     async (endpoint: string) => {
       try {
         await connectToNode(endpoint);
-        updateNodeInfo(endpoint);
-        setNodeInfo((prev) =>
-          prev.map((node) =>
-            node.endpoint === endpoint ? { ...node, connected: true } : node
-          )
-        );
+        const interval = setInterval(() => updateNodeInfo(endpoint), 4000);
+        return () => clearInterval(interval);
       } catch (error: unknown) {
         toast.error(
           `Failed to connect to ${endpoint}: ${
@@ -113,6 +84,32 @@ export default function TelemetryDashboard() {
     },
     [updateNodeInfo]
   );
+
+  useEffect(() => {
+    const loadSavedEndpoints = () => {
+      const savedEndpoints = localStorage.getItem(STORAGE_KEY);
+      if (savedEndpoints) {
+        const endpoints: string[] = JSON.parse(savedEndpoints);
+        setNodeInfo(
+          endpoints.map((endpoint) => ({
+            endpoint,
+            connected: false,
+          }))
+        );
+
+        endpoints.forEach((endpoint) => {
+          connectAndSubscribe(endpoint);
+        });
+      }
+    };
+
+    loadSavedEndpoints();
+
+    return () => {
+      nodeInfo.forEach((node) => disconnectFromNode(node.endpoint));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const validateUrl = (url: string) => {
     const pattern = /^(wss?:\/\/).+$/;
@@ -153,13 +150,6 @@ export default function TelemetryDashboard() {
     );
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedEndpoints));
   }, []);
-
-  const handleRowClick = useCallback(
-    (endpoint: string) => {
-      router.push(`/node?endpoint=${encodeURIComponent(endpoint)}`);
-    },
-    [router]
-  );
 
   return (
     <div className="w-full h-full flex flex-col gap-4">
@@ -218,7 +208,6 @@ export default function TelemetryDashboard() {
                       ? ""
                       : "bg-red-100 dark:bg-red-500 text-black dark:text-white"
                   }`}
-                  onClick={() => handleRowClick(node.endpoint)}
                 >
                   <TableCell className="font-medium truncate max-w-[150px]">
                     {node.name || "-"}
@@ -227,7 +216,15 @@ export default function TelemetryDashboard() {
                     <Tooltip delayDuration={50}>
                       <TooltipTrigger asChild>
                         <TableCell className="truncate max-w-[200px]">
-                          {node.endpoint}
+                          <Link
+                            href={`/node?endpoint=${encodeURIComponent(
+                              node.endpoint
+                            )}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {node.endpoint}
+                          </Link>
                         </TableCell>
                       </TooltipTrigger>
                       <TooltipContent align="start" side="top">

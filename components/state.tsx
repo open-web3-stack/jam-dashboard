@@ -1,20 +1,19 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { connectToNode, sendRequest, disconnectFromNode } from "@/lib/ws";
 import { toast } from "sonner";
-import { useEffect } from "react";
 
 type KeyValuePair = {
-  key: string;
-  value: string;
+  blockHash: string;
+  stateRoot: string;
 };
 
 export default function State({ endpoint }: { endpoint: string }) {
-  const [keyInput, setKeyInput] = useState("");
-  const [keyValuePairs, setKeyValuePairs] = useState<KeyValuePair[]>([]);
+  const [hashInput, setHashInput] = useState("");
+  const [stateRoots, setStateRoots] = useState<KeyValuePair[]>([]);
 
   useEffect(() => {
     connectToNode(endpoint).catch((error: unknown) =>
@@ -30,52 +29,59 @@ export default function State({ endpoint }: { endpoint: string }) {
     };
   }, [endpoint]);
 
-  const fetchKeyValue = useCallback(async () => {
-    if (keyInput.length !== 66 || !keyInput.startsWith("0x")) {
-      toast.error("Key must be a valid hex string `0x{string}`");
+  const fetchState = useCallback(async () => {
+    if (hashInput.length !== 66 && hashInput.length !== 0) {
+      toast.error(
+        "Hash must be a valid 32 byte hex string `0x{string}` or empty for best block"
+      );
       return;
     }
 
     try {
-      const result = await sendRequest(endpoint, "chain_getState", {
-        key: keyInput,
-      });
-      setKeyValuePairs((prev) => [
-        { key: keyInput, value: result as string },
+      const method = "chain_getState";
+      const params = hashInput ? { hash: hashInput } : {};
+      const result = (await sendRequest(endpoint, method, params)) as {
+        [key: string]: string;
+      };
+      setStateRoots((prev) => [
+        {
+          blockHash: result?.blockHash,
+          stateRoot: result?.stateRoot,
+        },
         ...prev,
       ]);
-      setKeyInput("");
+      setHashInput("");
     } catch (error: unknown) {
       toast.error(
-        `Failed to fetch key value: ${
+        `Failed to fetch state root: ${
           error instanceof Error ? error.message : "Unknown error"
         }`
       );
     }
-  }, [endpoint, keyInput]);
+  }, [endpoint, hashInput]);
 
   return (
     <div className="w-full space-y-4">
       <div>
-        <h3 className="text-lg font-semibold">Fetch Value</h3>
+        <h3 className="text-lg font-semibold">Fetch State</h3>
         <div className="flex space-x-2">
           <Input
             type="text"
-            placeholder="0x... (enter a 32 byte key)"
-            value={keyInput}
-            onChange={(e) => setKeyInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && fetchKeyValue()}
+            placeholder="0x... (optional 32 byte block hash)"
+            value={hashInput}
+            onChange={(e) => setHashInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && fetchState()}
           />
-          <Button onClick={fetchKeyValue}>Fetch</Button>
+          <Button onClick={fetchState}>Fetch</Button>
         </div>
       </div>
-      {keyValuePairs.map((pair, index) => (
+      {stateRoots.map((pair, index) => (
         <div key={index}>
-          <h3 className="text-md font-semibold">Key</h3>
-          <p className="font-mono break-all">{pair.key}</p>
-          <h3 className="text-md font-semibold mt-2">Value</h3>
+          <h3 className="text-md font-semibold">Block Hash</h3>
+          <p className="font-mono break-all">{pair.blockHash}</p>
+          <h3 className="text-md font-semibold mt-2">State Root</h3>
           <p className="font-mono break-all">
-            {pair.value || "No value found"}
+            {pair.stateRoot || "No state root found"}
           </p>
         </div>
       ))}
