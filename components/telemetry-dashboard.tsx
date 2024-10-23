@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,10 +17,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Hash, Cpu, Blocks, Users, X } from "lucide-react";
+import { Hash, Cpu, Blocks, Users, X, RefreshCw } from "lucide-react";
 import { connectToNode, sendRequest, disconnectFromNode } from "@/lib/ws";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
 
 type NodeInfo = {
   endpoint: string;
@@ -36,7 +35,94 @@ const STORAGE_KEY = "telemetry-endpoints";
 export default function TelemetryDashboard() {
   const [rpcInput, setRpcInput] = useState("");
   const [nodeInfo, setNodeInfo] = useState<NodeInfo[]>([]);
-  const router = useRouter();
+  const intervalsRef = useRef<{ [key: string]: NodeJS.Timeout }>({});
+
+  const setNodeConnected = useCallback(
+    (endpoint: string, connected: boolean) => {
+      setNodeInfo((prev) =>
+        prev.map((node) =>
+          node.endpoint === endpoint ? { ...node, connected } : node
+        )
+      );
+    },
+    []
+  );
+
+  const updateNodeInfo = useCallback(
+    async (endpoint: string) => {
+      try {
+        const data = await sendRequest(endpoint, "telemetry_getUpdate");
+        setNodeInfo((prev) => {
+          const index = prev.findIndex((node) => node.endpoint === endpoint);
+          if (index !== -1) {
+            const newNodeInfo = [...prev];
+            newNodeInfo[index] = {
+              ...newNodeInfo[index],
+              endpoint,
+              ...(data as Partial<NodeInfo>),
+              connected: true,
+            };
+            return newNodeInfo;
+          } else {
+            return [
+              ...prev,
+              { endpoint, ...(data as Partial<NodeInfo>), connected: true },
+            ];
+          }
+        });
+      } catch (error: unknown) {
+        setNodeConnected(endpoint, false);
+        toast.error(
+          `Failed to update info for ${endpoint}: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
+        );
+      }
+    },
+    [setNodeConnected]
+  );
+
+  const connectAndSubscribe = useCallback(
+    (endpoint: string) => {
+      const connect = async () => {
+        try {
+          await connectToNode(endpoint);
+          setNodeConnected(endpoint, true);
+          await updateNodeInfo(endpoint);
+        } catch (error: unknown) {
+          setNodeConnected(endpoint, false);
+          toast.error(
+            `Failed to connect to ${endpoint}: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          );
+        }
+      };
+
+      // Initial connection attempt
+      connect();
+
+      // Set up interval for periodic updates and reconnection attempts
+      const interval = setInterval(async () => {
+        if (!nodeInfo.find((node) => node.endpoint === endpoint)?.connected) {
+          // If not connected, try to reconnect
+          await connect();
+        } else {
+          // If connected, update node info
+          await updateNodeInfo(endpoint);
+        }
+      }, 4000);
+
+      intervalsRef.current[endpoint] = interval;
+
+      return () => {
+        clearInterval(interval);
+        delete intervalsRef.current[endpoint];
+      };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [setNodeConnected, updateNodeInfo]
+  );
 
   useEffect(() => {
     const loadSavedEndpoints = () => {
@@ -59,60 +145,12 @@ export default function TelemetryDashboard() {
     loadSavedEndpoints();
 
     return () => {
+      const currentIntervals = intervalsRef.current;
+      Object.values(currentIntervals).forEach(clearInterval);
       nodeInfo.forEach((node) => disconnectFromNode(node.endpoint));
     };
-  }, []);
-
-  const updateNodeInfo = useCallback(async (endpoint: string) => {
-    try {
-      const data = await sendRequest(endpoint, "telemetry_getUpdate");
-      setNodeInfo((prev) => {
-        const index = prev.findIndex((node) => node.endpoint === endpoint);
-        if (index !== -1) {
-          const newNodeInfo = [...prev];
-          newNodeInfo[index] = {
-            ...newNodeInfo[index],
-            endpoint,
-            ...(data as Partial<NodeInfo>),
-            connected: true,
-          };
-          return newNodeInfo;
-        } else {
-          return [
-            ...prev,
-            { endpoint, ...(data as Partial<NodeInfo>), connected: true },
-          ];
-        }
-      });
-    } catch (error: unknown) {
-      toast.error(
-        `Failed to update info for ${endpoint}: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
-    }
-  }, []);
-
-  const connectAndSubscribe = useCallback(
-    async (endpoint: string) => {
-      try {
-        await connectToNode(endpoint);
-        updateNodeInfo(endpoint);
-        setNodeInfo((prev) =>
-          prev.map((node) =>
-            node.endpoint === endpoint ? { ...node, connected: true } : node
-          )
-        );
-      } catch (error: unknown) {
-        toast.error(
-          `Failed to connect to ${endpoint}: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`
-        );
-      }
-    },
-    [updateNodeInfo]
-  );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectAndSubscribe]);
 
   const validateUrl = (url: string) => {
     const pattern = /^(wss?:\/\/).+$/;
@@ -152,14 +190,28 @@ export default function TelemetryDashboard() {
       (savedEndpoint: string) => savedEndpoint !== endpoint
     );
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedEndpoints));
+
+    if (intervalsRef.current[endpoint]) {
+      clearInterval(intervalsRef.current[endpoint]);
+      delete intervalsRef.current[endpoint];
+    }
   }, []);
 
-  const handleRowClick = useCallback(
-    (endpoint: string) => {
-      router.push(`/node?endpoint=${encodeURIComponent(endpoint)}`);
-    },
-    [router]
-  );
+  const refreshAll = useCallback(() => {
+    // Disconnect from all endpoints
+    nodeInfo.forEach((node) => {
+      disconnectFromNode(node.endpoint);
+      if (intervalsRef.current[node.endpoint]) {
+        clearInterval(intervalsRef.current[node.endpoint]);
+        delete intervalsRef.current[node.endpoint];
+      }
+    });
+
+    // Reconnect to all endpoints
+    nodeInfo.forEach((node) => {
+      connectAndSubscribe(node.endpoint);
+    });
+  }, [nodeInfo, connectAndSubscribe]);
 
   return (
     <div className="w-full h-full flex flex-col gap-4">
@@ -174,6 +226,9 @@ export default function TelemetryDashboard() {
           className="flex-grow"
         />
         <Button onClick={addRpc}>Add RPC</Button>
+        <Button onClick={refreshAll}>
+          <RefreshCw className="h-4 w-4" />
+        </Button>
       </div>
       <div className="overflow-x-auto min-h-[300px]">
         <Table>
@@ -218,7 +273,14 @@ export default function TelemetryDashboard() {
                       ? ""
                       : "bg-red-100 dark:bg-red-500 text-black dark:text-white"
                   }`}
-                  onClick={() => handleRowClick(node.endpoint)}
+                  onClick={() =>
+                    window.open(
+                      `jam-dashboard/node/?endpoint=${encodeURIComponent(
+                        node.endpoint
+                      )}`,
+                      "_blank"
+                    )
+                  }
                 >
                   <TableCell className="font-medium truncate max-w-[150px]">
                     {node.name || "-"}

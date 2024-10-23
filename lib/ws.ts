@@ -14,6 +14,8 @@ type WebSocketMessage = {
   params: Record<string, JSONValue>;
 };
 
+type WebSocketSubscribeMessage = Omit<WebSocketMessage, "id">;
+
 type WebSocketResponse = {
   jsonrpc: string;
   result?: JSONValue;
@@ -84,11 +86,10 @@ export function connectToNode(url: string): Promise<void> {
             connection.pendingRequests.delete(data.id);
           }
         } else if ("method" in data && "params" in data) {
-          // if subscription updates
-          const { result, subscription } = data.params;
-          const callback = connection.subscriptionCallbacks.get(subscription);
+          // subscription updates
+          const callback = connection.subscriptionCallbacks.get(data.method);
           if (callback) {
-            callback(result);
+            callback(data.params);
           }
         }
       }
@@ -151,16 +152,28 @@ export function subscribe(
       return;
     }
 
-    const id = nextRequestId++;
-    const message: WebSocketMessage = {
+    const message: WebSocketSubscribeMessage = {
       jsonrpc: "2.0",
       method,
-      id,
       params,
     };
 
-    connection.subscriptionCallbacks.set(id.toString(), callback);
+    connection.subscriptionCallbacks.set(method, callback);
     connection.ws.send(JSON.stringify(message));
+
+    resolve();
+  });
+}
+
+export function unsubscribe(url: string, method: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const connection = connections.get(url);
+    if (!connection) {
+      reject(new Error(`No active connection to ${url}`));
+      return;
+    }
+
+    connection.subscriptionCallbacks.delete(method);
 
     resolve();
   });
