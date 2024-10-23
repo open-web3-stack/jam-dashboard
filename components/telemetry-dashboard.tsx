@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +37,8 @@ export default function TelemetryDashboard() {
   const [rpcInput, setRpcInput] = useState("");
   const [nodeInfo, setNodeInfo] = useState<NodeInfo[]>([]);
   const intervalsRef = useRef<{ [key: string]: NodeJS.Timeout }>({});
+
+  const router = useRouter();
 
   const setNodeConnected = useCallback(
     (endpoint: string, connected: boolean) => {
@@ -273,14 +276,11 @@ export default function TelemetryDashboard() {
                       ? ""
                       : "bg-red-100 dark:bg-red-500 text-black dark:text-white"
                   }`}
-                  onClick={() =>
-                    window.open(
-                      `${
-                        window.location.pathname
-                      }/node/?endpoint=${encodeURIComponent(node.endpoint)}`,
-                      "_blank"
-                    )
-                  }
+                  onClick={() => {
+                    router.push(
+                      `/node?endpoint=${encodeURIComponent(node.endpoint)}`
+                    );
+                  }}
                 >
                   <TableCell className="font-medium truncate max-w-[150px]">
                     {node.name || "-"}
