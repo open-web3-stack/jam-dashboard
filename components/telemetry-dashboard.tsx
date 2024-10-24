@@ -19,7 +19,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Hash, Cpu, Blocks, Users, X, RefreshCw } from "lucide-react";
-import { connectToNode, sendRequest, disconnectFromNode } from "@/lib/ws";
+import { sendRequest, disconnectFromNode } from "@/lib/ws";
 import { toast } from "sonner";
 
 type NodeInfo = {
@@ -85,46 +85,22 @@ export default function TelemetryDashboard() {
     [setNodeConnected]
   );
 
-  const connectAndSubscribe = useCallback(
+  // TODO: use real subscription
+  const startPolling = useCallback(
     (endpoint: string) => {
-      const connect = async () => {
-        try {
-          await connectToNode(endpoint);
-          setNodeConnected(endpoint, true);
-          await updateNodeInfo(endpoint);
-        } catch (error: unknown) {
-          setNodeConnected(endpoint, false);
-          toast.error(
-            `Failed to connect to ${endpoint}: ${
-              error instanceof Error ? error.message : "Unknown error"
-            }`
-          );
-        }
-      };
+      if (intervalsRef.current[endpoint]) {
+        clearInterval(intervalsRef.current[endpoint]);
+      }
 
-      // Initial connection attempt
-      connect();
+      updateNodeInfo(endpoint);
 
-      // Set up interval for periodic updates and reconnection attempts
-      const interval = setInterval(async () => {
-        if (!nodeInfo.find((node) => node.endpoint === endpoint)?.connected) {
-          // If not connected, try to reconnect
-          await connect();
-        } else {
-          // If connected, update node info
-          await updateNodeInfo(endpoint);
-        }
+      const interval = setInterval(() => {
+        updateNodeInfo(endpoint);
       }, 4000);
 
       intervalsRef.current[endpoint] = interval;
-
-      return () => {
-        clearInterval(interval);
-        delete intervalsRef.current[endpoint];
-      };
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [setNodeConnected, updateNodeInfo]
+    [updateNodeInfo]
   );
 
   useEffect(() => {
@@ -140,7 +116,7 @@ export default function TelemetryDashboard() {
         );
 
         endpoints.forEach((endpoint) => {
-          connectAndSubscribe(endpoint);
+          startPolling(endpoint);
         });
       }
     };
@@ -150,10 +126,9 @@ export default function TelemetryDashboard() {
     return () => {
       const currentIntervals = intervalsRef.current;
       Object.values(currentIntervals).forEach(clearInterval);
-      nodeInfo.forEach((node) => disconnectFromNode(node.endpoint));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectAndSubscribe]);
+  }, []);
 
   const validateUrl = (url: string) => {
     const pattern = /^(wss?:\/\/).+$/;
@@ -171,7 +146,7 @@ export default function TelemetryDashboard() {
         ...prev,
         { endpoint: rpcInput, connected: false },
       ]); // Add as disconnected
-      connectAndSubscribe(rpcInput);
+      startPolling(rpcInput);
       setRpcInput("");
 
       const savedEndpoints = JSON.parse(
@@ -180,7 +155,7 @@ export default function TelemetryDashboard() {
       savedEndpoints.push(rpcInput);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(savedEndpoints));
     }
-  }, [rpcInput, nodeInfo, connectAndSubscribe]);
+  }, [rpcInput, nodeInfo, startPolling]);
 
   const removeRpc = useCallback((endpoint: string) => {
     disconnectFromNode(endpoint);
@@ -212,9 +187,9 @@ export default function TelemetryDashboard() {
 
     // Reconnect to all endpoints
     nodeInfo.forEach((node) => {
-      connectAndSubscribe(node.endpoint);
+      startPolling(node.endpoint);
     });
-  }, [nodeInfo, connectAndSubscribe]);
+  }, [nodeInfo, startPolling]);
 
   return (
     <div className="w-full h-full flex flex-col gap-4">
@@ -233,7 +208,7 @@ export default function TelemetryDashboard() {
           <RefreshCw className="h-4 w-4" />
         </Button>
       </div>
-      <div className="overflow-x-auto min-h-[300px]">
+      <div className="overflow-x-auto min-h-[300px] text-nowrap">
         <Table>
           <TableHeader>
             <TableRow>
@@ -274,7 +249,7 @@ export default function TelemetryDashboard() {
                   className={`cursor-pointer hover:bg-muted/50 ${
                     node.connected
                       ? ""
-                      : "bg-red-100 dark:bg-red-500 text-black dark:text-white"
+                      : "bg-red-200 dark:bg-red-500 text-black dark:text-white hover:bg-red-100"
                   }`}
                   onClick={() => {
                     router.push(

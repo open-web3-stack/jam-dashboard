@@ -1,11 +1,8 @@
-type JSONValue =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | JSONValue[]
-  | { [key: string]: JSONValue };
+type JSONValue = string | number | boolean | null;
+
+export type JSONObject =
+  | JSONObject[]
+  | { [key: string]: JSONValue | JSONObject };
 
 type WebSocketMessage = {
   jsonrpc: string;
@@ -16,9 +13,11 @@ type WebSocketMessage = {
 
 type WebSocketSubscribeMessage = Omit<WebSocketMessage, "id">;
 
+type RPCResult = JSONValue | JSONObject;
+
 type WebSocketResponse = {
   jsonrpc: string;
-  result?: JSONValue;
+  result?: RPCResult;
   error?: {
     code: number;
     message: string;
@@ -30,7 +29,7 @@ type WebSocketSubscriptionResponse = {
   jsonrpc: string;
   method: string;
   params: {
-    result: JSONValue;
+    result: JSONObject;
     subscription: string; // id
   };
 };
@@ -40,11 +39,11 @@ type Connection = {
   pendingRequests: Map<
     number,
     {
-      resolve: (value: JSONValue) => void;
+      resolve: (value: RPCResult) => void;
       reject: (reason: unknown) => void;
     }
   >;
-  subscriptionCallbacks: Map<string, (result: JSONValue) => void>;
+  subscriptionCallbacks: Map<string, (result: JSONObject) => void>;
 };
 
 const connections: Map<string, Connection> = new Map();
@@ -81,7 +80,7 @@ export function connectToNode(url: string): Promise<void> {
             if (data.error) {
               request.reject(new Error(data.error.message));
             } else {
-              request.resolve(data.result);
+              request.resolve(data.result || {});
             }
             connection.pendingRequests.delete(data.id);
           }
@@ -118,8 +117,22 @@ export function sendRequest(
   url: string,
   method: string,
   params: Record<string, JSONValue> = {}
-): Promise<JSONValue> {
-  return new Promise((resolve, reject) => {
+): Promise<RPCResult> {
+  return new Promise(async (resolve, reject) => {
+    if (!connections.has(url)) {
+      try {
+        await connectToNode(url);
+      } catch (error) {
+        reject(
+          new Error(
+            `Failed to connect to ${url}: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          )
+        );
+      }
+    }
+
     const connection = connections.get(url);
     if (!connection) {
       reject(new Error(`No active connection to ${url}`));
@@ -143,7 +156,7 @@ export function subscribe(
   url: string,
   method: string,
   params: Record<string, JSONValue> = {},
-  callback: (result: JSONValue) => void
+  callback: (result: JSONObject) => void
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const connection = connections.get(url);
